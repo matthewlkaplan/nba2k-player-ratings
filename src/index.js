@@ -6,48 +6,39 @@ import { BASE_URL } from "./url.js";
 import { CURRENT_TEAMS } from "./teams.js";
 import { player } from "./player.js";
 import { teamNamePrettier } from "./util.js";
-import { parse } from "json2csv"
-
+import { parse } from "json2csv";
 
 /**
  * Get each team's URL.
  */
 function getTeamsUrl(team) {
-  let baseUrl = BASE_URL;
-  return `${baseUrl}/teams/${team}`;
+  return `${BASE_URL}/teams/${team}`;
 }
 
 /**
- * Get all player urls in one team.
+ * Get all player URLs for a team.
  */
 async function getPlayersUrlsFromEachTeam(team) {
   let playerUrls = [];
-  let teamUrl = getTeamsUrl(team);
-
-  const options = {
-    headers: {
-      "User-Agent": "request",
-    },
-  };
+  const teamUrl = getTeamsUrl(team);
 
   try {
-    const response = await axios.get(teamUrl, options);
-    let tbody = cheerio.load(response.data)("tbody");
-    let table = tbody[0];
-    let entries = cheerio.load(table)(".entry-font");
+    const response = await axios.get(teamUrl, {
+      headers: { "User-Agent": "request" },
+    });
+
+    const tbody = cheerio.load(response.data)("tbody");
+    const table = tbody[0];
+    const entries = cheerio.load(table)(".entry-font");
 
     for (let entry of entries) {
-      let playerUrl = cheerio.load(entry)("a").attr("href");
-      playerUrls.push(playerUrl);
+      const playerUrl = cheerio.load(entry)("a").attr("href");
+      if (playerUrl) playerUrls.push(playerUrl);
     }
 
-    if (playerUrls.length > 0) {
-      return playerUrls;
-    } else {
-      throw new Error("Empty playerUrls length");
-    }
+    return playerUrls.length > 0 ? playerUrls : null;
   } catch (error) {
-    console.warn(error);
+    console.warn(`Failed to fetch players for team ${team}:`, error.message);
     return null;
   }
 }
@@ -56,250 +47,173 @@ async function getPlayersUrlsFromEachTeam(team) {
  * Get each player's attribute details.
  */
 async function getPlayerDetail(team, playerUrl) {
-  const options = {
-    headers: {
-      "User-Agent": "request",
-    },
-  };
-
   try {
-    const response = await axios.get(playerUrl, options);
-    var p = new player();
+    const response = await axios.get(playerUrl, {
+      headers: { "User-Agent": "request" },
+    });
+    const $ = cheerio.load(response.data);
+    const p = new player();
 
-    // name
-    let nameDiv = cheerio.load(response.data)("h1");
-    p.name = nameDiv.text().trim();
+    // Name
+    p.name = $("h1").text().trim() || "Unknown";
 
-    // overall attribute
-    let overallAttribute = cheerio.load(response.data)(".attribute-box-player");
-    p.overallAttribute = parseInt(overallAttribute.text().trim());
+    // Overall attribute
+    p.overallAttribute = parseInt($(".attribute-box-player").text().trim()) || 0;
 
-    // team
+    // Team
     p.team = team;
 
-    let attributes = cheerio.load(response.data)(
-      ".content .card .card-body .list-no-bullet li .attribute-box"
-    );
+    // Attributes list
+    const attributes = $(".content .card .card-body .list-no-bullet li .attribute-box");
 
-    // outside scoring
-    let closeShot = attributes[0].children[0].data.trim();
-    p.closeShot = parseInt(closeShot);
-    let midRangeShot = attributes[1].children[0].data.trim();
-    p.midRangeShot = parseInt(midRangeShot);
-    let threePointShot = attributes[2].children[0].data.trim();
-    p.threePointShot = parseInt(threePointShot);
-    let freeThrow = attributes[3].children[0].data.trim();
-    p.freeThrow = parseInt(freeThrow);
-    let shotIQ = attributes[4].children[0].data.trim();
-    p.shotIQ = parseInt(shotIQ);
-    let offensiveConsistency = attributes[5].children[0].data.trim();
-    p.offensiveConsistency = parseInt(offensiveConsistency);
+    const safeInt = (index) =>
+      parseInt(attributes[index]?.children[0]?.data?.trim()) || 0;
 
-    // badges
-    const badgeRawData = cheerio.load(response.data)('.badge-count')
-    let legendaryBadgeCount = badgeRawData[0].children[0].data
-    p.legendaryBadgeCount = parseInt(legendaryBadgeCount)
-    let purpleBadgeCount = badgeRawData[1].children[0].data
-    p.purpleBadgeCount = parseInt(purpleBadgeCount)
-    let goldBadgeCount = badgeRawData[2].children[0].data
-    p.goldBadgeCount = parseInt(goldBadgeCount)
-    let silverBadgeCount = badgeRawData[3].children[0].data
-    p.silverBadgeCount = parseInt(silverBadgeCount)
-    let bronzeBadgeCount = badgeRawData[4].children[0].data
-    p.bronzeBadgeCount = parseInt(bronzeBadgeCount)
-    let badgeCount = badgeRawData[5].children[0].data
-    p.badgeCount = parseInt(badgeCount)
+    // Outside scoring
+    p.closeShot = safeInt(0);
+    p.midRangeShot = safeInt(1);
+    p.threePointShot = safeInt(2);
+    p.freeThrow = safeInt(3);
+    p.shotIQ = safeInt(4);
+    p.offensiveConsistency = safeInt(5);
 
-    const rawOutsideScoringCount = cheerio.load(response.data)('#pills-outscoring-tab').text();
-    let digitMatch = rawOutsideScoringCount.match(/\((\d+)\)/);
-    const outsideScoringCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.outsideScoringBadgeCount = outsideScoringCount
+    // Athleticism
+    p.speed = safeInt(6);
+    p.agility = safeInt(7);
+    p.strength = safeInt(8);
+    p.vertical = safeInt(9);
+    p.stamina = safeInt(10);
+    p.hustle = safeInt(11);
+    p.overallDurability = safeInt(12);
 
-    const rawInsideScoringCount = cheerio.load(response.data)('#pills-inscoring-tab').text();
-    digitMatch = rawInsideScoringCount.match(/\((\d+)\)/);
-    const insideScoringCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.insideScoringBadgeCount= insideScoringCount
+    // Inside scoring
+    p.layup = safeInt(13);
+    p.standingDunk = safeInt(14);
+    p.drivingDunk = safeInt(15);
+    p.postHook = safeInt(16);
+    p.postFade = safeInt(17);
+    p.postControl = safeInt(18);
+    p.drawFoul = safeInt(19);
+    p.hands = safeInt(20);
 
-    const rawPlaymakingCount = cheerio.load(response.data)('#pills-playmaking-tab').text();
-    digitMatch = rawPlaymakingCount.match(/\((\d+)\)/);
-    const playmakingCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.insideScoringBadgeCount= playmakingCount
+    // Playmaking
+    p.passAccuracy = safeInt(21);
+    p.ballHandle = safeInt(22);
+    p.speedWithBall = safeInt(23);
+    p.passIQ = safeInt(24);
+    p.passVision = safeInt(25);
 
-    const rawDefenseCount = cheerio.load(response.data)('#pills-defense-tab').text();
-    digitMatch = rawDefenseCount.match(/\((\d+)\)/);
-    const defenseCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.defensiveBadgeCount = defenseCount
+    // Defense
+    p.interiorDefense = safeInt(26);
+    p.perimeterDefense = safeInt(27);
+    p.steal = safeInt(28);
+    p.block = safeInt(29);
+    p.helpDefenseIQ = safeInt(30);
+    p.passPerception = safeInt(31);
+    p.defensiveConsistency = safeInt(32);
 
-    const rawReboundingCount = cheerio.load(response.data)('#pills-rebounding-tab').text();
-    digitMatch = rawReboundingCount.match(/\((\d+)\)/);
-    const reboundingCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.reboundingBadgeCount = reboundingCount
+    // Rebounding
+    p.offensiveRebound = safeInt(33);
+    p.defensiveRebound = safeInt(34);
 
-    const rawGeneralOffenseCount = cheerio.load(response.data)('#pills-genoffense-tab').text();
-    digitMatch = rawGeneralOffenseCount.match(/\((\d+)\)/);
-    const generalOffenseCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.generalOffenseBadgeCount = generalOffenseCount
+    // Badges
+    const badgeRawData = $(".badge-count");
+    const safeBadge = (i) => parseInt(badgeRawData[i]?.children[0]?.data) || 0;
 
-    const rawAllAroundCount = cheerio.load(response.data)('#pills-allaround-tab').text();
-    digitMatch = rawAllAroundCount.match(/\((\d+)\)/);
-    const allAroundCount = digitMatch ? parseInt(digitMatch[1], 10) : null;
-    p.allAroundBadgeCount = allAroundCount
+    p.legendaryBadgeCount = safeBadge(0);
+    p.purpleBadgeCount = safeBadge(1);
+    p.goldBadgeCount = safeBadge(2);
+    p.silverBadgeCount = safeBadge(3);
+    p.bronzeBadgeCount = safeBadge(4);
+    p.badgeCount = safeBadge(5);
 
-    // height + position
-    let generalStatParent = cheerio.load(response.data)('.header-subtitle')
-    let heightStr = generalStatParent[0].children[6].children[1].children[0].data
-    p.height = heightStr
-    
-    let position = (generalStatParent[0].children[4].children[1].children[0].data)
-    p.position = position
+    const parseBadgeTab = (selector) => {
+      const text = $(selector).text();
+      const match = text.match(/\((\d+)\)/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
 
-    // athleticism
-    let speed = attributes[6].children[0].data.trim();
-    p.speed = parseInt(speed);
-    let agility = attributes[7].children[0].data.trim();
-    p.agility = parseInt(agility);
-    let strength = attributes[8].children[0].data.trim();
-    p.strength = parseInt(strength);
-    let vertical = attributes[9].children[0].data.trim();
-    p.vertical = parseInt(vertical);
-    let stamina = attributes[10].children[0].data.trim();
-    p.stamina = parseInt(stamina);
-    let hustle = attributes[11].children[0].data.trim();
-    p.hustle = parseInt(hustle);
-    let overallDurability = attributes[12].children[0].data.trim();
-    p.overallDurability = parseInt(overallDurability);
+    p.outsideScoringBadgeCount = parseBadgeTab("#pills-outscoring-tab");
+    p.insideScoringBadgeCount = parseBadgeTab("#pills-inscoring-tab");
+    p.playmakingBadgeCount = parseBadgeTab("#pills-playmaking-tab");
+    p.defensiveBadgeCount = parseBadgeTab("#pills-defense-tab");
+    p.reboundingBadgeCount = parseBadgeTab("#pills-rebounding-tab");
+    p.generalOffenseBadgeCount = parseBadgeTab("#pills-genoffense-tab");
+    p.allAroundBadgeCount = parseBadgeTab("#pills-allaround-tab");
 
-    // inside scoring
-    let layup = attributes[13].children[0].data.trim();
-    p.layup = parseInt(layup);
-    let standingDunk = attributes[14].children[0].data.trim();
-    p.standingDunk = parseInt(standingDunk);
-    let drivingDunk = attributes[15].children[0].data.trim();
-    p.drivingDunk = parseInt(drivingDunk);
-    let postHook = attributes[16].children[0].data.trim();
-    p.postHook = parseInt(postHook);
-    let postFade = attributes[17].children[0].data.trim();
-    p.postFade = parseInt(postFade);
-    let postControl = attributes[18].children[0].data.trim();
-    p.postControl = parseInt(postControl);
-    let drawFoul = attributes[19].children[0].data.trim();
-    p.drawFoul = parseInt(drawFoul);
-    let hands = attributes[20].children[0].data.trim();
-    p.hands = parseInt(hands);
-
-    // playmaking
-    let passAccuracy = attributes[21].children[0].data.trim();
-    p.passAccuracy = parseInt(passAccuracy);
-    let ballHandle = attributes[22].children[0].data.trim();
-    p.ballHandle = parseInt(ballHandle);
-    let speedWithBall = attributes[23].children[0].data.trim();
-    p.speedWithBall = parseInt(speedWithBall);
-    let passIQ = attributes[24].children[0].data.trim();
-    p.passIQ = parseInt(passIQ);
-    let passVision = attributes[25].children[0].data.trim();
-    p.passVision = parseInt(passVision);
-
-    // defense
-    let interiorDefense = attributes[26].children[0].data.trim();
-    p.interiorDefense = parseInt(interiorDefense);
-    let perimeterDefense = attributes[27].children[0].data.trim();
-    p.perimeterDefense = parseInt(perimeterDefense);
-    let steal = attributes[28].children[0].data.trim();
-    p.steal = parseInt(steal);
-    let block = attributes[29].children[0].data.trim();
-    p.block = parseInt(block);
-    let helpDefenseIQ = attributes[30].children[0].data.trim();
-    p.helpDefenseIQ = parseInt(helpDefenseIQ);
-    let passPerception = attributes[31].children[0].data.trim();
-    p.passPerception = parseInt(passPerception);
-    let defensiveConsistency = attributes[32].children[0].data.trim();
-    p.defensiveConsistency = parseInt(defensiveConsistency);
-
-    // rebounding
-    let offensiveRebound = attributes[33].children[0].data.trim();
-    p.offensiveRebound = parseInt(offensiveRebound);
-    let defensiveRebound = attributes[34].children[0].data.trim();
-    p.defensiveRebound = parseInt(defensiveRebound);
+    // Height + position
+    const header = $(".header-subtitle")[0]?.children || [];
+    p.height = header?.[6]?.children?.[1]?.children?.[0]?.data || "N/A";
+    p.position = header?.[4]?.children?.[1]?.children?.[0]?.data || "N/A";
 
     return p;
   } catch (error) {
-    console.warn(error);
+    console.warn(`Failed to parse player at ${playerUrl}:`, error.message);
     return null;
   }
 }
 
 /**
- * Player sorting comparator to group by each team, then sort all players by overall attributes from highest to lowest among the team
+ * Player sorting comparators
  */
 function sortPlayersWithTeamGroupBy(a, b) {
-  return a.team === b.team
-    ? b.overallAttribute - a.overallAttribute
-    : a.team < b.team;
+  return a.team === b.team ? b.overallAttribute - a.overallAttribute : a.team.localeCompare(b.team);
 }
 
-/**
- * Player sorting comparator to sort all players by overall attributes from highest to lowest among the whole league.
- */
 function sortPlayersWithoutTeamGroupBy(a, b) {
   return b.overallAttribute - a.overallAttribute;
 }
 
 /**
- * Sava data to local disk. Every new run generates a new file.
+ * Save data to CSV
  */
-function saveData(db) {
+function saveData(db, suffix = "team") {
   const today = new Date();
   const csvData = parse(db);
-  let filePath = `./data/2kroster_${today.toDateString()}.csv`;
-  // let data = JSON.stringify(db, null, 4);
-  
-  fs.writeFile(filePath, csvData, error => {
-      if (error == null) {
-          console.log("Successfully saved the latest rosters.");
-      } else {
-          console.log('Failed to save player roster to disk.', error);
-      }
-  })
+  const filePath = `./data/2kroster_${suffix}_${today.toDateString()}.csv`;
+
+  fs.writeFile(filePath, csvData, (error) => {
+    if (!error) console.log(`Saved ${suffix} roster to disk.`);
+    else console.log(`Failed to save ${suffix} roster:`, error);
+  });
 }
 
+/**
+ * Main scraper
+ */
 const main = async function () {
-  let teams = CURRENT_TEAMS;
+  const teams = CURRENT_TEAMS;
+  const roster = new Map();
+  const players = [];
 
-  // <teams, all player urls>
-  var roster = new Map();
-
-  // all players details
-  var players = [];
-
-  console.log("################ Fetching player urls ... ################");
+  console.log("################ Fetching player URLs ... ################");
   await Promise.all(
     teams.map(async (team) => {
-      let playerUrls = await getPlayersUrlsFromEachTeam(team);
-      roster.set(team, playerUrls);
+      const playerUrls = await getPlayersUrlsFromEachTeam(team);
+      if (playerUrls) roster.set(team, playerUrls);
     })
   );
 
   console.log("################ Fetching player details ... ################");
   for (let team of teams) {
-    let playerUrls = roster.get(team);
-    let prettiedTeamName = teamNamePrettier(team);
+    const playerUrls = roster.get(team) || [];
+    const prettiedTeamName = teamNamePrettier(team);
 
     console.log(`---------- ${prettiedTeamName} ----------`);
 
-    await Promise.all(
-      playerUrls.map(async (playerUrl) => {
-        let player = await getPlayerDetail(prettiedTeamName, playerUrl);
-        players.push(player);
-      })
+    const teamPlayers = await Promise.all(
+      playerUrls.map((url) => getPlayerDetail(prettiedTeamName, url))
     );
+
+    players.push(...teamPlayers.filter((p) => p !== null));
   }
 
-  let teamResult = [...players].sort(sortPlayersWithTeamGroupBy);
-  let leagueResult = players.sort(sortPlayersWithoutTeamGroupBy);
+  const teamResult = [...players].sort(sortPlayersWithTeamGroupBy);
+  const leagueResult = [...players].sort(sortPlayersWithoutTeamGroupBy);
 
   console.log("################ Saving data to disk ... ################");
-  saveData(teamResult);
-  saveData(leagueResult);
+  saveData(teamResult, "team");
+  saveData(leagueResult, "league");
 };
 
 main();
