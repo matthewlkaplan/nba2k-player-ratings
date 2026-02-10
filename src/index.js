@@ -47,8 +47,8 @@ async function getPlayersUrlsFromEachTeam(team) {
       throw new Error("Empty playerUrls length");
     }
   } catch (error) {
-    console.log(error);
-    throw new Error("Failed to get player detail response.");
+    console.warn(error);
+    continue;
   }
 }
 
