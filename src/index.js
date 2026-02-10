@@ -48,7 +48,7 @@ async function getPlayersUrlsFromEachTeam(team) {
     }
   } catch (error) {
     console.warn(error);
-    continue;
+    return null;
   }
 }
 
