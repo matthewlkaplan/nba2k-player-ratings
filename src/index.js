@@ -187,6 +187,8 @@ const main = async function () {
   const players = [];
 
   console.log("################ Fetching player URLs ... ################");
+
+  // Fetch player URLs for each team
   await Promise.all(
     teams.map(async (team) => {
       const playerUrls = await getPlayersUrlsFromEachTeam(team);
@@ -195,25 +197,30 @@ const main = async function () {
   );
 
   console.log("################ Fetching player details ... ################");
+
+  // Fetch player details for each team
   for (let team of teams) {
     const playerUrls = roster.get(team) || [];
     const prettiedTeamName = teamNamePrettier(team);
 
     console.log(`---------- ${prettiedTeamName} ----------`);
 
+    // Fetch all players concurrently for this team
     const teamPlayers = await Promise.all(
       playerUrls.map((url) => getPlayerDetail(prettiedTeamName, url))
     );
 
+    // Add only valid players
     players.push(...teamPlayers.filter((p) => p !== null));
   }
 
-  const teamResult = [...players].sort(sortPlayersWithTeamGroupBy);
-  const leagueResult = [...players].sort(sortPlayersWithoutTeamGroupBy);
+  console.log("################ Saving data to CSV ... ################");
 
-  console.log("################ Saving data to disk ... ################");
-  saveData(teamResult, "team");
-  saveData(leagueResult, "league");
+  // Save all players to a single CSV
+  saveData(players); // will write to 2kroster_latest.csv
+
+  console.log("Done!");
 };
+
 
 main();
