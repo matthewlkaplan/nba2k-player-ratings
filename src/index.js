@@ -216,11 +216,21 @@ const main = async function () {
 
   console.log("################ Saving data to CSV ... ################");
 
-  // Save all players to a single CSV
-  saveData(players); // will write to 2kroster_latest.csv
+  // Ensure the ./data folder exists
+  const fs = require("fs");
+  const path = require("path");
+  const dir = path.join(".", "data");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
+  // Save all players to a single CSV inside ./data
+  const filePath = path.join(dir, "2kroster_latest.csv");
+  const { parse } = require("json2csv");
+  fs.writeFileSync(filePath, parse(players));
+
+  console.log(`Saved roster to ${filePath}`);
   console.log("Done!");
 };
+
 
 
 main();
