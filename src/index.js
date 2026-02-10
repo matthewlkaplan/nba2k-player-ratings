@@ -223,8 +223,8 @@ async function getPlayerDetail(team, playerUrl) {
 
     return p;
   } catch (error) {
-    console.log(error);
-    throw new Error("Failed to get player details");
+    console.warn(error);
+    return null;
   }
 }
 
