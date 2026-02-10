@@ -290,7 +290,6 @@ const main = async function () {
       playerUrls.map(async (playerUrl) => {
         let player = await getPlayerDetail(prettiedTeamName, playerUrl);
         players.push(player);
-        console.log(`Successfully fetched ${player.name}'s detail.`);
       })
     );
   }
