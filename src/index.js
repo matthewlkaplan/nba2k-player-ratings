@@ -188,47 +188,43 @@ const main = async function () {
 
   console.log("################ Fetching player URLs ... ################");
 
-  // Fetch player URLs for each team
+  // Get player URLs for each team
   await Promise.all(
     teams.map(async (team) => {
-      const playerUrls = await getPlayersUrlsFromEachTeam(team);
-      if (playerUrls) roster.set(team, playerUrls);
+      const urls = await getPlayersUrlsFromEachTeam(team);
+      if (urls && urls.length > 0) {
+        roster.set(team, urls);
+      }
     })
   );
 
   console.log("################ Fetching player details ... ################");
 
-  // Fetch player details for each team
+  // Fetch player details team by team
   for (let team of teams) {
     const playerUrls = roster.get(team) || [];
     const prettiedTeamName = teamNamePrettier(team);
 
     console.log(`---------- ${prettiedTeamName} ----------`);
 
-    // Fetch all players concurrently for this team
-    const teamPlayers = await Promise.all(
-      playerUrls.map((url) => getPlayerDetail(prettiedTeamName, url))
+    await Promise.all(
+      playerUrls.map(async (url) => {
+        const p = await getPlayerDetail(prettiedTeamName, url);
+        if (p) players.push(p);   // skip failures silently
+      })
     );
-
-    // Add only valid players
-    players.push(...teamPlayers.filter((p) => p !== null));
   }
 
   console.log("################ Saving data to CSV ... ################");
 
-  // Ensure the ./data folder exists
-  const fs = require("fs");
-  const path = require("path");
-  const dir = path.join(".", "data");
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  // Convert to CSV
+  const csvData = parse(players);
 
-  // Save all players to a single CSV inside ./data
-  const filePath = path.join(dir, "2kroster_latest.csv");
-  const { parse } = require("json2csv");
-  fs.writeFileSync(filePath, parse(players));
+  // Write directly to project root
+  fs.writeFileSync("2kroster_latest.csv", csvData);
 
-  console.log(`Saved roster to ${filePath}`);
-  console.log("Done!");
+  console.log(`Saved ${players.length} players to 2kroster_latest.csv`);
+  console.log("Done.");
 };
 
 
